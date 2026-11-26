@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+    --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, monospace;
+  }
+
+  html,
+  body {
+    background-color: #fafafa;
+    color: #18181b;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    color-scheme: light;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+}

@@ -12,10 +12,12 @@ import { seedIfEmpty } from "./seed";
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 
-// Security headers (allow cross-origin embedding for tracker.js on live sites)
+// Security headers (allow cross-origin embedding for tracker.js and /api/preview)
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false,
+    frameguard: false,
   })
 );
 

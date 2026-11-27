@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { AppShell } from "@/components/AppShell";
 import {
+  API_BASE,
   fetchTrackedUrls,
   fetchHeatmap,
   fetchSites,
@@ -39,23 +40,36 @@ export default function HeatmapPage() {
     fetchSites().then(setSites).catch(() => {});
   }, []);
 
+  const selectedSiteObj = sites.find((s) => s.site_id === siteFilter) || null;
+
   const loadUrls = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await fetchTrackedUrls(siteFilter || undefined);
       setUrls(data);
-      setSelectedUrl((prev) => {
-        if (prev && data.some((u) => u.url === prev)) return prev;
-        return data[0]?.url ?? "";
-      });
+      if (data.length > 0) {
+        setSelectedUrl((prev) =>
+          prev && data.some((u) => u.url === prev) ? prev : data[0].url
+        );
+      } else {
+        // No tracked events for this site yet — clear URL & clicks immediately
+        setSelectedUrl("");
+        setClicks([]);
+      }
     } catch {
       setUrls([]);
+      setSelectedUrl("");
+      setClicks([]);
     } finally {
       setLoading(false);
     }
   }, [siteFilter]);
 
   const loadHeatmap = useCallback(async (url: string) => {
-    if (!url) return;
+    if (!url) {
+      setClicks([]);
+      return;
+    }
     try {
       const data = await fetchHeatmap(url);
       setClicks(data.clicks ?? []);
@@ -65,16 +79,18 @@ export default function HeatmapPage() {
   }, []);
 
   useEffect(() => {
+    setClicks([]);
     loadUrls();
   }, [loadUrls]);
 
   useEffect(() => {
     if (selectedUrl) {
       loadHeatmap(selectedUrl);
+    } else {
+      setClicks([]);
     }
   }, [selectedUrl, loadHeatmap]);
 
-  // Normalize click coordinates into percentage of the 1280x800 preview canvas
   const getNormalizedPct = (c: HeatmapClick) => {
     const baseW = c.viewport_w && c.viewport_w > 0 ? c.viewport_w : LOGICAL_W;
     const baseH = c.viewport_h && c.viewport_h > 0 ? c.viewport_h : LOGICAL_H;
@@ -111,20 +127,27 @@ export default function HeatmapPage() {
     });
   }, [clicks, mode]);
 
-  // Determine if the selected URL can be previewed inside a local iframe
-  const getPreviewPath = (rawUrl: string): string | null => {
+  // Active URL to preview: either the selected tracked URL, or the registered site's URL
+  const activePreviewUrl = selectedUrl || selectedSiteObj?.url || "";
+
+  const getIframeSrc = (rawUrl: string): string | null => {
+    if (!rawUrl) return null;
     try {
       const parsed = new URL(rawUrl);
-      if (parsed.pathname === "/demo" || parsed.pathname === "/") {
+      if (
+        typeof window !== "undefined" &&
+        parsed.origin === window.location.origin
+      ) {
         return parsed.pathname;
       }
-      return null;
+      // Route external live websites through backend preview proxy so X-Frame-Options doesn't block them
+      return `${API_BASE}/api/preview?url=${encodeURIComponent(rawUrl)}`;
     } catch {
       return rawUrl.startsWith("/") ? rawUrl : null;
     }
   };
 
-  const previewPath = selectedUrl ? getPreviewPath(selectedUrl) : null;
+  const iframeSrc = getIframeSrc(activePreviewUrl);
 
   return (
     <AppShell>
@@ -142,7 +165,11 @@ export default function HeatmapPage() {
           {/* Site Filter */}
           <select
             value={siteFilter}
-            onChange={(e) => setSiteFilter(e.target.value)}
+            onChange={(e) => {
+              setClicks([]);
+              setSelectedUrl("");
+              setSiteFilter(e.target.value);
+            }}
             aria-label="Filter by website"
             className="h-8 px-2.5 text-xs font-mono bg-[#FFFFFF] border border-[#E4E4E7] rounded-md text-[#18181B] focus:outline-none focus:border-[#FF4F00]"
           >
@@ -162,7 +189,11 @@ export default function HeatmapPage() {
             className="h-8 px-3 text-xs font-mono bg-[#FFFFFF] border border-[#E4E4E7] rounded-md text-[#18181B] focus:outline-none focus:border-[#FF4F00]"
           >
             {urls.length === 0 ? (
-              <option value="">No tracked URLs yet</option>
+              <option value="">
+                {selectedSiteObj
+                  ? `${selectedSiteObj.url} (0 events yet)`
+                  : "No tracked URLs yet"}
+              </option>
             ) : (
               urls.map((u) => (
                 <option key={u.url} value={u.url}>
@@ -216,13 +247,27 @@ export default function HeatmapPage() {
 
       {/* Heatmap Viewport Container */}
       <div className="bg-[#FFFFFF] border border-[#E4E4E7] rounded-lg overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-[#E4E4E7] bg-[#F4F4F5]/60 flex items-center justify-between text-xs">
+        <div className="px-4 py-2.5 border-b border-[#E4E4E7] bg-[#F4F4F5]/60 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 font-mono text-[#52525B]">
             <span className="h-2 w-2 rounded-full bg-[#FF4F00]" />
-            <span>{selectedUrl || "No URL selected"}</span>
+            <span>{activePreviewUrl || "No URL selected"}</span>
+            {activePreviewUrl && (
+              <a
+                href={activePreviewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-[#71717A] hover:text-[#18181B]"
+              >
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
           </div>
           <div className="font-mono text-[#71717A]">
-            {loading ? "Loading..." : `${clicks.length} recorded clicks`}
+            {loading
+              ? "Loading..."
+              : clicks.length === 0 && selectedSiteObj
+                ? "0 recorded clicks — embed tracker.js on this site to capture clicks"
+                : `${clicks.length} recorded clicks`}
           </div>
         </div>
 
@@ -231,36 +276,23 @@ export default function HeatmapPage() {
             className="relative w-full mx-auto bg-[#FFFFFF] border border-[#E4E4E7] rounded overflow-hidden"
             style={{ aspectRatio: "16 / 10", maxWidth: "1100px" }}
           >
-            {/* Background Page Preview (iframe if local /demo, or clean coordinate grid) */}
-            {previewPath ? (
+            {iframeSrc ? (
               <iframe
-                src={previewPath}
+                key={iframeSrc}
+                src={iframeSrc}
                 title="Page preview"
                 className="w-full h-full border-0 pointer-events-none opacity-85"
               />
             ) : (
               <div
-                className="w-full h-full flex flex-col items-center justify-center gap-2 text-xs font-mono text-[#71717A]"
+                className="w-full h-full flex items-center justify-center text-xs font-mono text-[#A1A1AA]"
                 style={{
                   backgroundImage:
                     "linear-gradient(to right, #F4F4F5 1px, transparent 1px), linear-gradient(to bottom, #F4F4F5 1px, transparent 1px)",
                   backgroundSize: "40px 40px",
                 }}
               >
-                <span>
-                  Live External URL Coordinate Plane ({LOGICAL_W}×{LOGICAL_H} normalized)
-                </span>
-                {selectedUrl && (
-                  <a
-                    href={selectedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[#FF4F00] hover:underline"
-                  >
-                    Open {selectedUrl}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
+                Select a website or tracked URL above
               </div>
             )}
 

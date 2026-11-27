@@ -137,4 +137,90 @@ router.delete("/sites/:siteId", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/preview?url=<encoded_url>
+ * Fetches a live external page's HTML and injects <base href> so CSS/images
+ * resolve inside the heatmap preview iframe without X-Frame-Options blocking.
+ */
+router.get("/preview", async (req: Request, res: Response) => {
+  const rawUrl = typeof req.query.url === "string" ? req.query.url : "";
+  if (!rawUrl) {
+    res.status(400).send("Missing url parameter");
+    return;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      res.status(400).send("Invalid protocol");
+      return;
+    }
+  } catch {
+    res.status(400).send("Invalid URL");
+    return;
+  }
+
+  // Basic SSRF guard: block private/link-local metadata IPs
+  const host = parsed.hostname.toLowerCase();
+  if (
+    host === "169.254.169.254" ||
+    host.startsWith("10.") ||
+    host.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  ) {
+    res.status(403).send("Private network URLs are not allowed");
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+
+    const upstream = await fetch(parsed.toString(), {
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+    clearTimeout(timer);
+
+    const contentType = upstream.headers.get("content-type") || "";
+    if (!upstream.ok || !contentType.includes("text/html")) {
+      res.status(502).send(
+        `<html><body style="font-family:monospace;padding:32px;color:#52525B;background:#FAFAFA;">Preview unavailable (HTTP ${upstream.status}). Click coordinates will still render on this plane.</body></html>`
+      );
+      return;
+    }
+
+    let html = await upstream.text();
+    const baseTag = `<base href="${parsed.origin}/" target="_blank" />`;
+
+    if (/<head[^>]*>/i.test(html)) {
+      html = html.replace(/<head[^>]*>/i, (match) => `${match}\n${baseTag}`);
+    } else {
+      html = `${baseTag}\n${html}`;
+    }
+
+    // Strip any meta CSP frame-ancestors if present
+    html = html.replace(
+      /<meta[^>]+http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi,
+      ""
+    );
+
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch (err) {
+    console.error("[GET /api/preview] error:", err);
+    res
+      .status(502)
+      .send(
+        `<html><body style="font-family:monospace;padding:32px;color:#52525B;background:#FAFAFA;">Could not load live preview for ${parsed.origin}. Click coordinates will still render on this plane.</body></html>`
+      );
+  }
+});
+
 export default router;

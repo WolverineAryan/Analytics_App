@@ -100,7 +100,11 @@ export default function DemoStorePage() {
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-[#18181B]">
       {/* Standalone Vanilla JS Tracker SDK */}
-      <Script src={`${API_BASE}/tracker.js`} strategy="afterInteractive" />
+      <Script
+        src={`${API_BASE}/tracker.js`}
+        data-site-id="site_demo_kinetic"
+        strategy="afterInteractive"
+      />
 
       {/* Store Header */}
       <header className="bg-[#FFFFFF] border-b border-[#E4E4E7] sticky top-0 z-20">

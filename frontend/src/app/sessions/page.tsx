@@ -5,8 +5,10 @@ import { AppShell } from "@/components/AppShell";
 import {
   fetchSessions,
   fetchSessionEvents,
+  fetchSites,
   SessionSummary,
   TrackedEvent,
+  SiteSummary,
 } from "@/lib/api";
 import {
   RefreshCw,
@@ -40,6 +42,8 @@ function formatDelta(prevIso: string, currIso: string): string {
 }
 
 export default function SessionsPage() {
+  const [sites, setSites] = useState<SiteSummary[]>([]);
+  const [siteFilter, setSiteFilter] = useState<string>("");
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [events, setEvents] = useState<TrackedEvent[]>([]);
@@ -49,10 +53,17 @@ export default function SessionsPage() {
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialSite = params.get("site_id") || "";
+    if (initialSite) setSiteFilter(initialSite);
+    fetchSites().then(setSites).catch(() => {});
+  }, []);
+
   const loadSessions = useCallback(async () => {
     try {
       setError(null);
-      const data = await fetchSessions();
+      const data = await fetchSessions(siteFilter || undefined);
       setSessions(data);
       setSelectedId((prev) => {
         if (prev && data.some((s) => s.session_id === prev)) return prev;
@@ -65,7 +76,7 @@ export default function SessionsPage() {
     } finally {
       setLoadingSessions(false);
     }
-  }, []);
+  }, [siteFilter]);
 
   const loadEvents = useCallback(async (sessionId: string) => {
     setLoadingEvents(true);
@@ -121,7 +132,21 @@ export default function SessionsPage() {
           </h1>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={siteFilter}
+            onChange={(e) => setSiteFilter(e.target.value)}
+            aria-label="Filter by website"
+            className="h-8 px-2.5 text-xs font-mono bg-[#FFFFFF] border border-[#E4E4E7] rounded-md text-[#18181B] focus:outline-none focus:border-[#FF4F00]"
+          >
+            <option value="">All Websites</option>
+            {sites.map((s) => (
+              <option key={s.site_id} value={s.site_id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+
           <button
             type="button"
             onClick={() => setAutoRefresh((v) => !v)}

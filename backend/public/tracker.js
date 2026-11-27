@@ -4,7 +4,6 @@
   var STORAGE_KEY = "cf_analytics_session_id";
   var COOKIE_NAME = "cf_session_id";
 
-  // Resolve ingestion endpoint from script tag data-endpoint or script origin
   var currentScript = document.currentScript;
   var scriptOrigin = "";
   if (currentScript && currentScript.src) {
@@ -14,6 +13,12 @@
       scriptOrigin = "";
     }
   }
+
+  var SITE_ID =
+    (currentScript && currentScript.getAttribute("data-site-id")) ||
+    window.__CF_SITE_ID__ ||
+    window.location.hostname ||
+    "default";
 
   var ENDPOINT =
     (currentScript && currentScript.getAttribute("data-endpoint")) ||
@@ -100,6 +105,7 @@
 
   function trackPageView() {
     sendEvent({
+      site_id: SITE_ID,
       session_id: sessionId,
       event_type: "page_view",
       url: getCleanUrl(),
@@ -110,7 +116,6 @@
   }
 
   function trackClick(e) {
-    // Ignore clicks from inside the analytics dashboard itself if embedded
     if (e.target && e.target.closest && e.target.closest("[data-analytics-ignore]")) {
       return;
     }
@@ -123,6 +128,7 @@
         : undefined;
 
     sendEvent({
+      site_id: SITE_ID,
       session_id: sessionId,
       event_type: "click",
       url: getCleanUrl(),
@@ -136,17 +142,14 @@
     });
   }
 
-  // Track initial page_view
   if (document.readyState === "complete" || document.readyState === "interactive") {
     trackPageView();
   } else {
     document.addEventListener("DOMContentLoaded", trackPageView);
   }
 
-  // Track clicks
   document.addEventListener("click", trackClick, true);
 
-  // Track SPA route changes (pushState / popstate)
   var lastUrl = getCleanUrl();
   function handleRouteChange() {
     var nextUrl = getCleanUrl();
@@ -163,8 +166,8 @@
   };
   window.addEventListener("popstate", handleRouteChange);
 
-  // Expose minimal debug hook
   window.__CF_TRACKER__ = {
+    siteId: SITE_ID,
     sessionId: sessionId,
     trackPageView: trackPageView,
   };

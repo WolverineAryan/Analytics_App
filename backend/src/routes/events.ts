@@ -6,6 +6,7 @@ const router = Router();
 
 const eventSchema = z
   .object({
+    site_id: z.string().max(64).optional(),
     session_id: z.string().min(1, "session_id is required").max(128),
     event_type: z.enum(["page_view", "click"]),
     url: z.string().min(1, "url is required").max(2048),
@@ -43,8 +44,8 @@ router.post("/events", async (req: Request, res: Response) => {
     }
 
     const items = Array.isArray(payload) ? payload : [payload];
-    if (items.length === 0) {
-      res.status(400).json({ error: "Empty event payload" });
+    if (items.length === 0 || items.length > 100) {
+      res.status(400).json({ error: "Payload must contain 1 to 100 events" });
       return;
     }
 
@@ -69,16 +70,21 @@ router.post("/events", async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/sessions
+ * GET /api/sessions?site_id=...
  * Aggregates all sessions with total event counts, click counts, and timestamps.
  */
-router.get("/sessions", async (_req: Request, res: Response) => {
+router.get("/sessions", async (req: Request, res: Response) => {
   try {
+    const siteId = typeof req.query.site_id === "string" ? req.query.site_id : "";
+    const matchStage = siteId ? [{ $match: { site_id: siteId } }] : [];
+
     const sessions = await Event.aggregate([
+      ...matchStage,
       { $sort: { timestamp: 1 } },
       {
         $group: {
           _id: "$session_id",
+          site_id: { $first: "$site_id" },
           event_count: { $sum: 1 },
           page_views: {
             $sum: { $cond: [{ $eq: ["$event_type", "page_view"] }, 1, 0] },
@@ -95,6 +101,7 @@ router.get("/sessions", async (_req: Request, res: Response) => {
         $project: {
           _id: 0,
           session_id: "$_id",
+          site_id: 1,
           event_count: 1,
           page_views: 1,
           clicks: 1,
@@ -132,15 +139,20 @@ router.get("/sessions/:sessionId/events", async (req: Request, res: Response) =>
 });
 
 /**
- * GET /api/urls
+ * GET /api/urls?site_id=...
  * Lists distinct tracked page URLs with their click counts for the heatmap selector.
  */
-router.get("/urls", async (_req: Request, res: Response) => {
+router.get("/urls", async (req: Request, res: Response) => {
   try {
+    const siteId = typeof req.query.site_id === "string" ? req.query.site_id : "";
+    const matchStage = siteId ? [{ $match: { site_id: siteId } }] : [];
+
     const urls = await Event.aggregate([
+      ...matchStage,
       {
         $group: {
           _id: "$url",
+          site_id: { $first: "$site_id" },
           total_events: { $sum: 1 },
           click_count: {
             $sum: { $cond: [{ $eq: ["$event_type", "click"] }, 1, 0] },
@@ -151,6 +163,7 @@ router.get("/urls", async (_req: Request, res: Response) => {
         $project: {
           _id: 0,
           url: "$_id",
+          site_id: 1,
           total_events: 1,
           click_count: 1,
         },
@@ -180,6 +193,7 @@ router.get("/heatmap", async (req: Request, res: Response) => {
     const clicks = await Event.find({ url, event_type: "click" })
       .select("x y viewport_w viewport_h timestamp element_tag element_text -_id")
       .sort({ timestamp: -1 })
+      .limit(5000)
       .lean();
 
     res.json({ url, total_clicks: clicks.length, clicks });

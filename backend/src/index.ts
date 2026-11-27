@@ -1,54 +1,85 @@
 import "dotenv/config";
 import path from "path";
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
-import { connectDB } from "./config/db";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { connectDB, disconnectDB } from "./config/db";
 import eventsRouter from "./routes/events";
+import sitesRouter from "./routes/sites";
 import { seedIfEmpty } from "./seed";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 
-const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
-  .split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
+// Security headers (allow cross-origin embedding for tracker.js on live sites)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (curl, Postman, same-origin) or matching origins
-      if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(null, true); // Permissive for demo tracker script embedding across domains
-    },
+    origin: true,
     credentials: true,
   })
 );
 
-// Parse both JSON and text/plain (used by navigator.sendBeacon)
-app.use(express.json({ limit: "1mb" }));
-app.use(express.text({ type: "text/plain", limit: "1mb" }));
+// Rate-limit event ingestion to protect against bursts/abuse
+const ingestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Rate limit exceeded. Slow down event ingestion." },
+});
 
-// Serve standalone tracker.js
-app.use(express.static(path.join(__dirname, "../public")));
+app.use("/api/events", ingestLimiter);
+
+// Parse both JSON and text/plain (used by navigator.sendBeacon)
+app.use(express.json({ limit: "512kb" }));
+app.use(express.text({ type: "text/plain", limit: "512kb" }));
+
+// Serve standalone tracker.js with short cache header
+app.use(
+  express.static(path.join(__dirname, "../public"), {
+    maxAge: "5m",
+  })
+);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 app.use("/api", eventsRouter);
+app.use("/api", sitesRouter);
+
+// Global error handler
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("[unhandled error]", err);
+  res.status(500).json({ error: "Internal server error" });
+});
 
 async function start() {
   await connectDB();
   await seedIfEmpty();
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`[server] Analytics API listening on http://localhost:${PORT}`);
     console.log(`[server] Tracker SDK available at http://localhost:${PORT}/tracker.js`);
   });
+
+  const shutdown = async () => {
+    console.log("[server] Shutting down gracefully...");
+    server.close(async () => {
+      await disconnectDB();
+      process.exit(0);
+    });
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
 start().catch((err) => {

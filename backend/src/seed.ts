@@ -1,12 +1,25 @@
 import { Event } from "./models/Event";
+import { Site } from "./models/Site";
 
-const DEMO_URL = process.env.DEMO_URL || "http://localhost:3000/demo";
+const DEMO_URL = process.env.DEMO_URL || "http://localhost:3001/demo";
+const DEMO_ORIGIN = new URL(DEMO_URL).origin;
+const DEMO_SITE_ID = "site_demo_kinetic";
 
 /**
- * Seeds realistic e-commerce user journeys if the database is empty.
- * This ensures the dashboard is immediately demonstrable on first run.
+ * Seeds a default registered site and realistic e-commerce user journeys
+ * if the database is empty.
  */
 export async function seedIfEmpty(): Promise<void> {
+  const siteCount = await Site.countDocuments();
+  if (siteCount === 0) {
+    await Site.create({
+      site_id: DEMO_SITE_ID,
+      name: "KINETIC SUPPLY (Demo Store)",
+      url: DEMO_URL,
+      origin: DEMO_ORIGIN,
+    });
+  }
+
   const count = await Event.countDocuments();
   if (count > 0) {
     return;
@@ -16,8 +29,8 @@ export async function seedIfEmpty(): Promise<void> {
   const min = 60 * 1000;
 
   const sampleEvents = [
-    // Session 1: High-intent buyer who filters, inspects a product, and adds to cart
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_8f4a21c9-01a4",
       event_type: "page_view",
       url: DEMO_URL,
@@ -26,6 +39,7 @@ export async function seedIfEmpty(): Promise<void> {
       viewport_h: 800,
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_8f4a21c9-01a4",
       event_type: "click",
       url: DEMO_URL,
@@ -38,6 +52,7 @@ export async function seedIfEmpty(): Promise<void> {
       element_text: "Apparel",
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_8f4a21c9-01a4",
       event_type: "click",
       url: DEMO_URL,
@@ -50,6 +65,7 @@ export async function seedIfEmpty(): Promise<void> {
       element_text: "Add to Cart",
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_8f4a21c9-01a4",
       event_type: "click",
       url: DEMO_URL,
@@ -62,6 +78,7 @@ export async function seedIfEmpty(): Promise<void> {
       element_text: "Cart (1)",
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_8f4a21c9-01a4",
       event_type: "click",
       url: DEMO_URL,
@@ -73,9 +90,8 @@ export async function seedIfEmpty(): Promise<void> {
       element_tag: "BUTTON",
       element_text: "Checkout",
     },
-
-    // Session 2: Comparison shopper clicking multiple product cards
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_3b9e77d2-09f1",
       event_type: "page_view",
       url: DEMO_URL,
@@ -84,6 +100,7 @@ export async function seedIfEmpty(): Promise<void> {
       viewport_h: 800,
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_3b9e77d2-09f1",
       event_type: "click",
       url: DEMO_URL,
@@ -96,6 +113,7 @@ export async function seedIfEmpty(): Promise<void> {
       element_text: "Carry",
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_3b9e77d2-09f1",
       event_type: "click",
       url: DEMO_URL,
@@ -108,6 +126,7 @@ export async function seedIfEmpty(): Promise<void> {
       element_text: "Add to Cart",
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_3b9e77d2-09f1",
       event_type: "click",
       url: DEMO_URL,
@@ -119,9 +138,8 @@ export async function seedIfEmpty(): Promise<void> {
       element_tag: "BUTTON",
       element_text: "Add to Cart",
     },
-
-    // Session 3: Quick bounce / explorer
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_c1209a4e-77b3",
       event_type: "page_view",
       url: DEMO_URL,
@@ -130,6 +148,7 @@ export async function seedIfEmpty(): Promise<void> {
       viewport_h: 800,
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_c1209a4e-77b3",
       event_type: "click",
       url: DEMO_URL,
@@ -142,6 +161,7 @@ export async function seedIfEmpty(): Promise<void> {
       element_text: "All",
     },
     {
+      site_id: DEMO_SITE_ID,
       session_id: "sess_c1209a4e-77b3",
       event_type: "click",
       url: DEMO_URL,

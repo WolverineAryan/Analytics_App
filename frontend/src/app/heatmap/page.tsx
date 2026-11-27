@@ -5,10 +5,12 @@ import { AppShell } from "@/components/AppShell";
 import {
   fetchTrackedUrls,
   fetchHeatmap,
+  fetchSites,
   UrlSummary,
   HeatmapClick,
+  SiteSummary,
 } from "@/lib/api";
-import { Flame, Crosshair, RefreshCw } from "lucide-react";
+import { Flame, Crosshair, RefreshCw, ExternalLink } from "lucide-react";
 
 type ViewMode = "density" | "dots";
 
@@ -16,6 +18,8 @@ const LOGICAL_W = 1280;
 const LOGICAL_H = 800;
 
 export default function HeatmapPage() {
+  const [sites, setSites] = useState<SiteSummary[]>([]);
+  const [siteFilter, setSiteFilter] = useState<string>("");
   const [urls, setUrls] = useState<UrlSummary[]>([]);
   const [selectedUrl, setSelectedUrl] = useState<string>("");
   const [clicks, setClicks] = useState<HeatmapClick[]>([]);
@@ -28,9 +32,16 @@ export default function HeatmapPage() {
   const [loading, setLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialSite = params.get("site_id") || "";
+    if (initialSite) setSiteFilter(initialSite);
+    fetchSites().then(setSites).catch(() => {});
+  }, []);
+
   const loadUrls = useCallback(async () => {
     try {
-      const data = await fetchTrackedUrls();
+      const data = await fetchTrackedUrls(siteFilter || undefined);
       setUrls(data);
       setSelectedUrl((prev) => {
         if (prev && data.some((u) => u.url === prev)) return prev;
@@ -41,7 +52,7 @@ export default function HeatmapPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [siteFilter]);
 
   const loadHeatmap = useCallback(async (url: string) => {
     if (!url) return;
@@ -128,6 +139,21 @@ export default function HeatmapPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Site Filter */}
+          <select
+            value={siteFilter}
+            onChange={(e) => setSiteFilter(e.target.value)}
+            aria-label="Filter by website"
+            className="h-8 px-2.5 text-xs font-mono bg-[#FFFFFF] border border-[#E4E4E7] rounded-md text-[#18181B] focus:outline-none focus:border-[#FF4F00]"
+          >
+            <option value="">All Websites</option>
+            {sites.map((s) => (
+              <option key={s.site_id} value={s.site_id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+
           {/* Page URL Selector */}
           <select
             value={selectedUrl}
@@ -214,14 +240,27 @@ export default function HeatmapPage() {
               />
             ) : (
               <div
-                className="w-full h-full flex items-center justify-center text-xs font-mono text-[#A1A1AA]"
+                className="w-full h-full flex flex-col items-center justify-center gap-2 text-xs font-mono text-[#71717A]"
                 style={{
                   backgroundImage:
                     "linear-gradient(to right, #F4F4F5 1px, transparent 1px), linear-gradient(to bottom, #F4F4F5 1px, transparent 1px)",
                   backgroundSize: "40px 40px",
                 }}
               >
-                External URL coordinate plane ({LOGICAL_W}×{LOGICAL_H} normalized)
+                <span>
+                  Live External URL Coordinate Plane ({LOGICAL_W}×{LOGICAL_H} normalized)
+                </span>
+                {selectedUrl && (
+                  <a
+                    href={selectedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[#FF4F00] hover:underline"
+                  >
+                    Open {selectedUrl}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </div>
             )}
 

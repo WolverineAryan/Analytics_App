@@ -140,6 +140,13 @@ export default function HeatmapPage() {
       ) {
         return parsed.pathname;
       }
+      // Localhost/127.0.0.1 dev servers (e.g. :3000, :5173) should load directly
+      if (
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "127.0.0.1"
+      ) {
+        return rawUrl;
+      }
       // Route external live websites through backend preview proxy so X-Frame-Options doesn't block them
       return `${API_BASE}/api/preview?url=${encodeURIComponent(rawUrl)}`;
     } catch {
